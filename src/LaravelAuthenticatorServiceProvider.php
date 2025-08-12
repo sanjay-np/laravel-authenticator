@@ -2,6 +2,8 @@
 
 namespace LaravelAuthenticator;
 
+use Illuminate\Support\Facades\Blade;
+use LaravelAuthenticator\Services\ShortcodeService;
 use Spatie\LaravelPackageTools\Package;
 use Spatie\LaravelPackageTools\PackageServiceProvider;
 
@@ -13,5 +15,23 @@ class LaravelAuthenticatorServiceProvider extends PackageServiceProvider
             ->name('laravel-authenticator')
             ->hasconfigfile('authenticator')
             ->hasviews();
+    }
+
+    public function packageBooted(): void
+    {
+        // Register Blade directives
+        $this->registerBladeDirectives();
+    }
+
+    protected function registerBladeDirectives(): void
+    {
+        if (!config('authenticator.shortcodes.enabled', true)) {
+            return;
+        }
+
+        // Register @totp directive
+        Blade::directive('totp', function ($expression) {
+            return "<?php echo app('" . ShortcodeService::class . "')->render($expression); ?>";
+        });
     }
 }

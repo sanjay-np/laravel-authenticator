@@ -5,6 +5,8 @@ namespace LaravelAuthenticator\Facades;
 use Illuminate\Support\Facades\Facade;
 
 /**
+ *@method static string generateSecret()
+ *
  * @see \LaravelAuthenticator\LaravelAuthenticator
  *
  * */

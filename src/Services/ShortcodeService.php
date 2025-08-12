@@ -21,6 +21,8 @@ class ShortcodeService
             // Get TOTP data based on shortcode type
             $data = $this->getTotpData($attributes);
 
+            dd($data);
+
             if (!$data) {
                 return $this->renderError('Unable to load TOTP data');
             }
