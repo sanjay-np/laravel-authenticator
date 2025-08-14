@@ -1,212 +1,167 @@
 # Laravel Authenticator
 
-A comprehensive Laravel package for TOTP (Time-based One-Time Password) authentication with QR code scanning capabilities. This package provides Google Authenticator-like functionality with the ability to generate TOTP codes, create QR codes for easy setup, and verify codes through both Blade shortcodes and direct API calls.
+A Laravel package for Time-based One-Time Password (TOTP) authentication with Blade shortcode support and optional QR code display.
 
 ## Features
 
-- 🔐 **TOTP Generation & Verification**: Generate and verify time-based one-time passwords
-- 📱 **QR Code Support**: Generate QR codes for easy setup with authenticator apps
-- 🔍 **QR Code Parsing**: Parse and extract TOTP parameters from QR code content
-- 🎨 **Blade Shortcodes**: Display TOTP codes directly in Blade templates
-- ⚙️ **Configurable**: Fully customizable settings for periods, digits, algorithms
-- 🔒 **Secure**: Built with industry-standard TOTP libraries
+- **TOTP generation and verification** using `spomky-labs/otphp`.
+- **Encrypted secrets** stored via Laravel Crypt.
+- **Per-client secrets** with active scope and last-used tracking.
+- **Blade directive** `@totp([...])` to render current code with timer.
+- **Configurable** period, digits, algorithm, window, QR settings.
+- **Tested** with Pest + Orchestra Testbench.
+
+## Requirements
+
+- **PHP**: ^8.3
+- **Laravel**: ^10 || ^11 || ^12
 
 ## Installation
 
-Install the package via Composer:
+1. Install via Composer:
 
 ```bash
 composer require sanjay-np/laravel-authenticator
 ```
 
-Publish the configuration file:
+2. Publish only what you need (config or migration):
+
+- Publish config only:
 
 ```bash
-php artisan vendor:publish --tag="authenticator-config"
+php artisan vendor:publish --tag=laravel-authenticator-config
+```
+
+- Publish migration only:
+
+```bash
+php artisan vendor:publish --tag=laravel-authenticator-migrations
+```
+
+This will place:
+- **Config** at `config/authenticator.php`
+- **Migration** (timestamped) under `database/migrations`
+
+3. Run migrations:
+
+```bash
+php artisan migrate
 ```
 
 ## Configuration
 
-The configuration file `config/authenticator.php` allows you to customize:
+Update `config/authenticator.php` as needed:
 
-```php
-return [
-    'totp' => [
-        'period' => 60,        // Time period in seconds
-        'digits' => 6,         // Number of digits in code
-        'algorithm' => 'sha1', // Hash algorithm
-        'window' => 1,         // Validation window
-    ],
-    'qr_code' => [
-        'size' => 200,         // QR code size in pixels
-        'margin' => 10,        // QR code margin
-        'format' => 'png',     // Format: png or svg
-    ],
-    'shortcodes' => [
-        'enabled' => true,
-        'tag' => 'totp',
-    ],
-];
-```
+- **totp.period**: default 60 seconds
+- **totp.digits**: default 6
+- **totp.algorithm**: `sha1|sha256|sha512`
+- **totp.window**: allowed drift windows for verification
 
 ## Usage
 
-### Basic TOTP Operations
+### Service API
 
 ```php
-use LaravelAuthenticator\Facades\LaravelAuthenticator;
+use LaravelAuthenticator\LaravelAuthenticator;
 
-// Generate a new secret
-$secret = LaravelAuthenticator::generateSecret();
+$auth = app(\LaravelAuthenticator\LaravelAuthenticator::class);
+
+// Create a secret for a client (e.g., user id)
+$record = $auth->generateClientSecret(clientId: 123, label: 'My Device');
 
 // Get current TOTP code
-$code = LaravelAuthenticator::getCurrentCode($secret);
+$code = $auth->getCurrentCode($record->secret);
 
-// Verify a TOTP code
-$isValid = LaravelAuthenticator::verifyCode($secret, '123456');
+// Verify a code
+$isValid = $auth->verifyCode($record->secret, $code);
 
-// Generate QR code
-$qrCode = LaravelAuthenticator::generateQrCode($secret, 'user@example.com', 'MyApp');
+// Verify by client id via model lookup
+$isValid = $auth->verifyTotpCode(123, $code);
 
-// Parse QR code content
-$params = LaravelAuthenticator::parseQrCode('otpauth://totp/MyApp:user@example.com?secret=JBSWY3DPEHPK3PXP&issuer=MyApp');
-
-// Get provisioning URI
-$uri = LaravelAuthenticator::getProvisioningUri($secret, 'user@example.com', 'MyApp');
+// Data for UI display (timer, progress, etc.)
+$data = $auth->getClientTotpDisplayData($record->id);
 ```
 
-### Blade Shortcodes
-
-Display TOTP codes directly in your Blade templates using the shortcode service:
-
-```blade
-{{-- Display TOTP code with secret ID --}}
-@totp(secret_id="1" display="code" show_timer="true")
-
-{{-- Display QR code --}}
-@totp(secret_id="1" display="qr")
-
-{{-- Display both code and QR code --}}
-@totp(secret_id="1" display="both" show_timer="true")
-
-{{-- Minimal display --}}
-@totp(secret_id="1" display="minimal")
-```
-
-### Shortcode Options
-
-- `secret_id`: The ID of the stored secret
-- `display`: Display type (`code`, `qr`, `both`, `minimal`)
-- `show_timer`: Show expiration timer (`true`/`false`)
-- `format`: Display format (`default`)
-- `size`: Size (`small`, `medium`, `large`)
-- `refresh`: Refresh mode (`manual`, `auto`)
-
-### Advanced Usage
-
-#### Working with TOTP Objects
+### Facade
 
 ```php
 use LaravelAuthenticator\Facades\LaravelAuthenticator;
 
-// Create a TOTP instance with custom settings
-$totp = LaravelAuthenticator::createTotp($secret, 'user@example.com', 'MyApp');
-
-// Generate QR code with different formats
-$pngQrCode = LaravelAuthenticator::generateQrCode($secret, 'user@example.com', 'MyApp', 'png');
-$svgQrCode = LaravelAuthenticator::generateQrCode($secret, 'user@example.com', 'MyApp', 'svg');
-
-// Parse QR code content to extract parameters
-$qrContent = 'otpauth://totp/MyApp:user@example.com?secret=JBSWY3DPEHPK3PXP&issuer=MyApp&period=30&digits=6';
-$params = LaravelAuthenticator::parseQrCode($qrContent);
-// Returns: ['secret' => 'JBSWY3DPEHPK3PXP', 'label' => 'MyApp:user@example.com', 'issuer' => 'MyApp', ...]
+$secret = LaravelAuthenticator::generateSecret();
 ```
 
-#### Integration with Your Application
+### Blade Directive (Shortcode)
 
-```php
-// In your controller
-class TwoFactorController extends Controller
-{
-    public function setup(Request $request)
-    {
-        $user = $request->user();
-        
-        // Generate a new secret for the user
-        $secret = LaravelAuthenticator::generateSecret();
-        
-        // Store the secret (you'll need to implement storage)
-        $user->update(['totp_secret' => encrypt($secret)]);
-        
-        // Generate QR code for setup
-        $qrCode = LaravelAuthenticator::generateQrCode(
-            $secret, 
-            $user->email, 
-            config('app.name')
-        );
-        
-        return view('auth.two-factor-setup', compact('qrCode', 'secret'));
-    }
-    
-    public function verify(Request $request)
-    {
-        $user = $request->user();
-        $code = $request->input('code');
-        
-        // Get the user's secret
-        $secret = decrypt($user->totp_secret);
-        
-        // Verify the code
-        $isValid = LaravelAuthenticator::verifyCode($secret, $code);
-        
-        if ($isValid) {
-            // Code is valid, proceed with authentication
-            return redirect()->intended();
-        }
-        
-        return back()->withErrors(['code' => 'Invalid authentication code']);
-    }
-}
+Render a live-updating code with a progress timer (auto-refresh via page reload each period):
+
+```blade
+@totp(['secret_id' => $secretId, 'display' => 'code', 'show_timer' => 'true'])
 ```
 
-## Security Considerations
+- **secret_id**: the `authenticator_secrets.id` value
+- **display**: `code|qr|both|minimal` (currently `code` is implemented)
+- **show_timer**: `true|false`
 
-- **Secret Storage**: Always encrypt TOTP secrets when storing them in your database using Laravel's `encrypt()` function
-- **HTTPS**: Always use HTTPS in production to protect sensitive data transmission
-- **Rate Limiting**: Implement rate limiting on TOTP verification endpoints to prevent brute force attacks
-- **Secret Rotation**: Consider implementing secret rotation policies for enhanced security
-- **Validation Window**: Use appropriate validation windows to balance security and usability
-- **Backup Codes**: Consider implementing backup codes for account recovery
+## Database
+
+Table: `authenticator_secrets`
+
+- **client_id**: bigint (application user id or similar)
+- **secret**: encrypted string via `Crypt`
+- **label, issuer, algorithm, digits, period, is_active, last_used_at**
+
+A migration is provided and can be published using the commands above. Ensure APP_KEY is set.
 
 ## Testing
 
-Run the package tests:
+This package ships with Pest tests.
+
+- Run all tests:
 
 ```bash
 composer test
 ```
 
-## Requirements
+- With coverage:
 
-- PHP ^8.3
-- Laravel ^10.0||^11.0||^12.0
+```bash
+composer test-coverage
+```
 
-## Contributing
+## Security Considerations
 
-Please see [CONTRIBUTING.md](CONTRIBUTING.md) for details.
+- Secrets are encrypted at rest using Laravel Crypt.
+- Ensure **APP_KEY** is configured in production.
+- Consider rotating secrets if compromised and track `last_used_at`.
+- Limit exposure of raw secrets; `getClientTotpDisplayData` hides secrets by default.
 
-## Security Vulnerabilities
+## Versioning & Release
 
-If you discover a security vulnerability, please send an e-mail to [excelblade10@gmail.com](mailto:excelblade10@gmail.com).
+- Follow **SemVer**: `MAJOR.MINOR.PATCH`.
+- Add changes to a `CHANGELOG.md`.
+- Tag releases in Git: `git tag vX.Y.Z && git push --tags`.
+- Configure GitHub Actions (optional) to run tests and build on PRs.
+
+### Suggested GitHub Actions Workflow (optional)
+
+Create `.github/workflows/tests.yml`:
+
+```yaml
+name: tests
+on: [push, pull_request]
+jobs:
+  pest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          coverage: xdebug
+      - run: composer install --no-interaction --prefer-dist
+      - run: composer test-coverage
+```
 
 ## License
 
-The MIT License (MIT). Please see [License File](LICENSE.md) for more information.
-
-## Credits
-
-- **Author**: [Sanjay Chaudhary](https://github.com/sanjay-np)
-- Built with [Spatie Laravel Package Tools](https://github.com/spatie/laravel-package-tools)
-- Uses [OTPHP](https://github.com/Spomky-Labs/otphp) for TOTP generation
-- Uses [Endroid QR Code](https://github.com/endroid/qr-code) for QR code generation
-- Uses [Bacon QR Code](https://github.com/Bacon/BaconQrCode) for QR code reading
+MIT

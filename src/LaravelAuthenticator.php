@@ -53,9 +53,9 @@ class LaravelAuthenticator
             'label' => $label ?? 'Authenticator Secret - ' . $clientId,
             'issuer' => Auth::user()?->email,
             'secret' => $secret,
-            'algorithm' => config('verified.totp.algorithm', 'sha1'),
-            'digits' => config('verified.totp.digits', 6),
-            'period' => config('verified.totp.period', 60),
+            'algorithm' => config('authenticator.totp.algorithm', 'sha1'),
+            'digits' => config('authenticator.totp.digits', 6),
+            'period' => config('authenticator.totp.period', 60),
             'is_active' => true,
         ]);
     }
@@ -116,9 +116,9 @@ class LaravelAuthenticator
         }
 
         // Configure TOTP with settings from config
-        $totp->setPeriod(config('verified.totp.period', 60));
-        $totp->setDigits(config('verified.totp.digits', 6));
-        $totp->setDigest(config('verified.totp.algorithm', 'sha1'));
+        $totp->setPeriod(config('authenticator.totp.period', 60));
+        $totp->setDigits(config('authenticator.totp.digits', 6));
+        $totp->setDigest(config('authenticator.totp.algorithm', 'sha1'));
 
         return $totp;
     }

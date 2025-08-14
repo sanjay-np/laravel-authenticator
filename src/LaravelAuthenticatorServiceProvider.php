@@ -3,6 +3,8 @@
 namespace LaravelAuthenticator;
 
 use Illuminate\Support\Facades\Blade;
+use LaravelAuthenticator\Console\PublishConfigCommand;
+use LaravelAuthenticator\Console\PublishMigrationCommand;
 use LaravelAuthenticator\Services\ShortcodeService;
 use Spatie\LaravelPackageTools\Package;
 use Spatie\LaravelPackageTools\PackageServiceProvider;
@@ -13,8 +15,22 @@ class LaravelAuthenticatorServiceProvider extends PackageServiceProvider
     {
         $package
             ->name('laravel-authenticator')
-            ->hasconfigfile('authenticator')
-            ->hasviews();
+            ->hasConfigFile('authenticator')
+            ->hasViews()
+            ->hasMigration('create_authenticator_secrets_table')
+            ->hasCommands([
+                PublishMigrationCommand::class,
+                PublishConfigCommand::class,
+            ]);
+
+        // Ensure publish tags are available for explicit commands
+        $this->publishes([
+            __DIR__.'/../config/authenticator.php' => config_path('authenticator.php'),
+        ], 'laravel-authenticator-config');
+
+        $this->publishes([
+            __DIR__.'/../database/migrations/create_authenticator_secrets_table.php.stub' => database_path('migrations/'.date('Y_m_d_His').'_create_authenticator_secrets_table.php'),
+        ], 'laravel-authenticator-migrations');
     }
 
     public function packageRegistered(): void
