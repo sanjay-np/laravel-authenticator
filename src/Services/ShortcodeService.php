@@ -2,15 +2,18 @@
 
 namespace LaravelAuthenticator\Services;
 
+use Illuminate\Support\Facades\Log;
+use LaravelAuthenticator\Facades\LaravelAuthenticator;
+
 class ShortcodeService
 {
     /**
-     * Parse and render shortcode
+     * Render shortcode from array of attributes
      */
-    public function render(string $expression): string
+    public function render(array $attributes)
     {
         // Parse the shortcode expression
-        $attributes = $this->parseAttributes($expression);
+        $attributes = $this->parseAttributes($attributes);
 
         // Validate required parameters
         if (!$this->validateAttributes($attributes)) {
@@ -20,8 +23,6 @@ class ShortcodeService
         try {
             // Get TOTP data based on shortcode type
             $data = $this->getTotpData($attributes);
-
-            dd($data);
 
             if (!$data) {
                 return $this->renderError('Unable to load TOTP data');
@@ -37,22 +38,12 @@ class ShortcodeService
     /**
      * Parse shortcode attributes from expression
      */
-    private function parseAttributes(string $expression): array
+    private function parseAttributes(array $attributes): array
     {
-        $attributes = [];
-
-        // Remove quotes and parse key="value" pairs
-        preg_match_all('/(\w+)=["\']([^"\']*)["\']/', $expression, $matches, PREG_SET_ORDER);
-
-        foreach ($matches as $match) {
-            $attributes[$match[1]] = $match[2];
-        }
-
-        // Set defaults
         $attributes = array_merge([
             'display' => 'code',
             'format' => 'default',
-            'refresh' => 'manual',
+            'refresh' => 'auto',
             'show_timer' => 'true',
             'show_qr' => 'false',
             'size' => 'medium',
@@ -85,24 +76,35 @@ class ShortcodeService
      */
     private function getTotpData(array $attributes): ?array
     {
-
         if (isset($attributes['secret_id'])) {
             return $this->getTotpDataBySecretId((int) $attributes['secret_id']);
         }
         return null;
     }
 
-
     /**
      * Get TOTP data by secret ID
      */
     private function getTotpDataBySecretId(int $secretId): ?array
     {
-        return [
-            'secret_id' => $secretId,
-        ];
+        try {
+            $data = LaravelAuthenticator::getClientTotpDisplayData($secretId, ['showCurrentCode' => true]);
+            return array_merge($data, [
+                'source' => 'verified_secrets',
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error getting TOTP data for secret ID ' . $secretId . ': ' . $e->getMessage());
+            return null;
+        }
     }
 
+    /**
+     * Render error message
+     */
+    private function renderError(string $message): string
+    {
+        return '<div class="laravel-verified-error">' . htmlspecialchars($message) . '</div>';
+    }
 
     /**
      * Render the shortcode based on attributes and data
@@ -113,36 +115,20 @@ class ShortcodeService
         $format = $attributes['format'];
         $refresh = $attributes['refresh'];
         $showTimer = $attributes['show_timer'] === 'true';
-        $showQr = $attributes['show_qr'] === 'true' || $display === 'qr' || $display === 'both';
         $size = $attributes['size'];
-
-        // Generate unique ID for this shortcode instance
+        /**
+         *Generate unique ID for this shortcode instance
+         *
+         * */
         $instanceId = 'totp-' . uniqid();
-
         $html = '<div class="laravel-verified-shortcode ' . $format . ' ' . $size . '" id="' . $instanceId . '">';
-
-        // Add CSS if not already added
         $html .= $this->getShortcodeStyles();
-
-        // Render based on display type
         switch ($display) {
             case 'code':
                 $html .= $this->renderCodeDisplay($data, $showTimer, $refresh, $instanceId);
                 break;
-            case 'qr':
-                $html .= $this->renderQrDisplay($data);
-                break;
-            case 'both':
-                $html .= $this->renderCodeDisplay($data, $showTimer, $refresh, $instanceId);
-                $html .= $this->renderQrDisplay($data);
-                break;
-            case 'minimal':
-                $html .= $this->renderMinimalDisplay($data);
-                break;
         }
-
         $html .= '</div>';
-
         // Add JavaScript for auto-refresh if enabled
         if ($refresh === 'auto') {
             $html .= $this->getAutoRefreshScript($instanceId, $data);
@@ -156,11 +142,11 @@ class ShortcodeService
      */
     private function renderCodeDisplay(array $data, bool $showTimer, string $refresh, string $instanceId): string
     {
-        $code = $data['current_code'] ?? $data['currentCode'] ?? '------';
+        $code = $data['current_code'] ?? $data['currentCode'] ?? '--- ---';
         $expiresIn = $data['expires_in'] ?? $data['expiresIn'] ?? 0;
         $period = $data['period'] ?? 60;
 
-        $html = '<div class="totp-code-display">';
+        $html = '<div id="' . $instanceId . '" class="totp-code-display">';
         $html .= '<div class="totp-code">' . chunk_split($code, 3, ' ') . '</div>';
 
         if ($showTimer) {
@@ -170,49 +156,8 @@ class ShortcodeService
             $html .= '<div class="timer-text">Expires in ' . $expiresIn . 's</div>';
             $html .= '</div>';
         }
-
-        if ($refresh === 'manual') {
-            $html .= '<button class="totp-refresh-btn" onclick="refreshTotp(\'' . $instanceId . '\')">Refresh</button>';
-        }
-
         $html .= '</div>';
-
         return $html;
-    }
-
-    /**
-     * Render QR code display
-     */
-    private function renderQrDisplay(array $data): string
-    {
-        if (!isset($data['qrCode']) && !isset($data['qr_code'])) {
-            return '<div class="totp-qr-error">QR code not available</div>';
-        }
-
-        $qrCode = $data['qrCode'] ?? $data['qr_code'];
-
-        $html = '<div class="totp-qr-display">';
-        $html .= '<img src="' . htmlspecialchars($qrCode) . '" alt="TOTP QR Code" class="totp-qr-image" />';
-        $html .= '</div>';
-
-        return $html;
-    }
-
-    /**
-     * Render minimal display
-     */
-    private function renderMinimalDisplay(array $data): string
-    {
-        $code = $data['current_code'] ?? $data['currentCode'] ?? '------';
-        return '<span class="totp-minimal">' . $code . '</span>';
-    }
-
-    /**
-     * Render error message
-     */
-    private function renderError(string $message): string
-    {
-        return '<div class="laravel-verified-error">' . htmlspecialchars($message) . '</div>';
     }
 
     /**
@@ -221,13 +166,10 @@ class ShortcodeService
     private function getShortcodeStyles(): string
     {
         static $stylesAdded = false;
-
         if ($stylesAdded) {
             return '';
         }
-
         $stylesAdded = true;
-
         return '<style>
             .laravel-verified-shortcode { margin: 10px 0; }
             .laravel-verified-shortcode.small { font-size: 0.8em; }
@@ -248,29 +190,34 @@ class ShortcodeService
         </style>';
     }
 
-    /**
-     * Get JavaScript for auto-refresh functionality
-     */
     private function getAutoRefreshScript(string $instanceId, array $data): string
     {
-        $refreshInterval = ($data['period'] ?? 60) * 1000; // Convert to milliseconds
+        $expiresIn = $data['expires_in'] ?? $data['expiresIn'] ?? 0;
+        $period = $data['period'] ?? 60;
 
         return '<script>
-            (function() {
-                function refreshTotp(id) {
-                    // This would need to be implemented based on your specific needs
-                    // For now, just reload the page or make an AJAX call
-                    location.reload();
+        (function() {
+            let expiresIn = ' . intval($expiresIn) . ';
+            const period = ' . intval($period) . ';
+            const timerText = document.querySelector("#' . $instanceId . ' .timer-text");
+            const timerProgress = document.querySelector("#' . $instanceId . ' .timer-progress");
+
+            function updateTimer() {
+                expiresIn--;
+                if (expiresIn < 0) {
+                    location.reload(); // reload page instead of fetching
+                    return;
                 }
-
-                // Auto-refresh every period
-                setInterval(function() {
-                    refreshTotp("' . $instanceId . '");
-                }, ' . $refreshInterval . ');
-
-                // Make refresh function globally available
-                window.refreshTotp = refreshTotp;
-            })();
-        </script>';
+                if (timerText) {
+                    timerText.textContent = "Expires in " + expiresIn + "s";
+                }
+                if (timerProgress) {
+                    const progress = ((period - expiresIn) / period) * 100;
+                    timerProgress.style.width = progress + "%";
+                }
+            }
+            setInterval(updateTimer, 1000);
+        })();
+    </script>';
     }
 }

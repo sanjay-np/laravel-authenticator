@@ -4,10 +4,13 @@ namespace LaravelAuthenticator\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Casts\Attribute;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Facades\Crypt;
 
 class AuthenticatorSecret extends Model
 {
+    use SoftDeletes;
+
     protected $table = 'authenticator_secrets';
 
     protected $fillable = [
@@ -29,6 +32,7 @@ class AuthenticatorSecret extends Model
         'last_used_at' => 'datetime',
     ];
 
+
     /**
      * Encrypt/decrypt the secret
      */
@@ -49,30 +53,6 @@ class AuthenticatorSecret extends Model
     }
 
     /**
-     * Scope to get secrets for a specific user
-     */
-    public function scopeForClient($query, $user)
-    {
-        return $query->where('client_id', $user->id);
-    }
-
-    /**
-     * Mark this secret as used
-     */
-    public function markAsUsed(): void
-    {
-        $this->update(['last_used_at' => now()]);
-    }
-
-    /**
-     * Generate current TOTP code for this secret
-     */
-    public function getCurrentCode(): string
-    {
-        return app('laravel-authenticator')->getCurrentCode($this->secret);
-    }
-
-    /**
      * Verify a TOTP code against this secret
      */
     public function verifyCode(string $code, ?int $window = null): bool
@@ -87,27 +67,10 @@ class AuthenticatorSecret extends Model
     }
 
     /**
-     * Generate QR code for this secret
+     * Mark this secret as used
      */
-    public function generateQrCode(string $format = 'png'): string
+    public function markAsUsed(): void
     {
-        return app('laravel-authenticator')->generateQrCode(
-            $this->secret,
-            $this->label,
-            $this->issuer,
-            $format
-        );
-    }
-
-    /**
-     * Get the provisioning URI for this secret
-     */
-    public function getProvisioningUri(): string
-    {
-        return app('laravel-authenticator')->getProvisioningUri(
-            $this->secret,
-            $this->label,
-            $this->issuer
-        );
+        $this->update(['last_used_at' => now()]);
     }
 }

@@ -17,6 +17,15 @@ class LaravelAuthenticatorServiceProvider extends PackageServiceProvider
             ->hasviews();
     }
 
+    public function packageRegistered(): void
+    {
+        $this->app->singleton('laravel-authenticator', function () {
+            return new \LaravelAuthenticator\LaravelAuthenticator();
+        });
+
+        $this->app->singleton(ShortcodeService::class);
+    }
+
     public function packageBooted(): void
     {
         // Register Blade directives
