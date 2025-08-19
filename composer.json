@@ -1,6 +1,7 @@
 {
     "name": "sanjay-np/laravel-authenticator",
     "description": "A Laravel package for TOTP authentication with QR code scanning capabilities",
+    "version": "0.0.1",
     "keywords": [
         "laravel",
         "totp",
